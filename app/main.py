@@ -5,7 +5,10 @@ from app.database import Database
 import stripe
 import logging
 import json
-from psycopg2 import IntegrityError
+from app.charge_calendar import process_charges
+from app.queries import Queries
+
+queries = Queries()
 
 logger = logging.getLogger(__name__)
 
@@ -37,27 +40,13 @@ def customer_exists_in_stripe(email: str) -> bool | dict:
         logger.error("Failed to query Stripe for existing customer.", exc_info=True)
         return jsonify({'error': 'Failed to communicate with Stripe.'}), 500
     return False
-
-def customer_exists_in_database(email: str, phone: str = None) -> bool | dict:
-    # Check for existing customer in the database
-    try:  
-        with g.db_conn as conn:
-            with conn.cursor() as cursor:
-                if phone:
-                    query = "SELECT 1 FROM public.customers WHERE email = %s OR phone = %s LIMIT 1"
-                    cursor.execute(query, (email, phone))
-                else:
-                    query = "SELECT 1 FROM public.customers WHERE email = %s LIMIT 1"
-                    cursor.execute(query, (email,))
-                if cursor.fetchone():
-                    return True
-    except Exception as e:
-        logger.error(f"Failed to communicate with database: {e}")
-        return jsonify({'error': 'Failed to communicate with database.'}), 409
-    return False
     
 def create_customer(name: dict, email: str, phone: str) -> str:
-    database_check = customer_exists_in_database(email, phone)
+    database_check = queries.check_existence(
+        table_name='customers',
+        fields=['email', 'phone'], 
+        values=[email, phone]
+    )
     if isinstance(database_check, dict):
         return database_check
     
@@ -101,9 +90,13 @@ def submit_application():
     stripe_check = customer_exists_in_stripe(email)
     if not isinstance(stripe_check, bool):
         return stripe_check
-    database_check = customer_exists_in_database(email, phone)
+    database_check = queries.check_existence(
+        table_name='customers',
+        fields=['email', 'phone'], 
+        values=[email, phone]
+    )
     if not isinstance(database_check, bool):
-        return database_check
+        return database_check 
     if stripe_check is True or database_check is True:
         return jsonify({'error': 'Customer already exists.'}), 409
 
@@ -113,17 +106,17 @@ def submit_application():
     customer_id = response
     
     try:
-        with g.db_conn as conn:
-            with conn.cursor() as cursor:
-                query = """
-                INSERT INTO public.customers (customer_id, email, phone, name, address, metadata)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                """
-                cursor.execute(query, (customer_id, email, phone, json.dumps(name), json.dumps(address), json.dumps(metadata)))
-                conn.commit()
-                return jsonify({'message': 'Application submitted successfully.', 'id': customer_id}), 201
-    except IntegrityError as e:
-        conn.rollback()
+        data={
+            'customer_id': customer_id,
+            'email': email,
+            'phone': phone,
+            'name': json.dumps(name),
+            'address': json.dumps(address),
+            'metadata': json.dumps(metadata)
+        }
+        queries.insert_record(table_name='customers', data=data)
+        return jsonify({'message': 'Application submitted successfully.', 'id': customer_id}), 201
+    except Exception as e:
         stripe.Customer.delete(customer_id)
         return jsonify({'error': 'An error occurred. Please try again later.'}), 409
     
@@ -201,6 +194,17 @@ def set_default_payment_method():
         logger.error("Stripe API call failed.", exc_info=True)
         return jsonify({'error': 'Failed to update the default payment method.'}), 500
     
+@app.route('/process-charges', methods=['POST'])
+def process_charges_route():
+    data: dict = request.json
+    type_code = data.get('type_code')
+    try:
+        process_charges(type_code)
+        return jsonify({'message': 'Charges processed successfully.'}), 200
+    except Exception as e:
+        logger.error("Failed to process charges.", exc_info=True)
+        return jsonify({'error': 'Failed to process charges.'}), 500
+    
 @app.route('/webhook', methods=['POST'])
 def webhook():
     logger.debug("Received webhook.")
@@ -219,6 +223,14 @@ def webhook():
     except Exception as e:
         logger.error(f'Unhandled exception: {e}')
         return 'Internal server error', 500
+    
+    if event['type'] == 'customer.deleted':
+        event_object = event['data']['object']
+        customer_id = event_object['id']
+        logger.debug(f"Customer ID: {customer_id}")
+        queries.delete_record('customers', {'customer_id': customer_id})
+    
+    return jsonify(success=True), 200
     
     # Add event handling logic here
 

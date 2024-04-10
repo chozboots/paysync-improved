@@ -13,8 +13,14 @@ class Config:
 
     # sendgrid
     SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY', 'default_sendgrid_api_key')
-    COMPANY_EMAIL = os.getenv('COMPANY_EMAIL', 'default_company_email')
+    
+    COMPANY_NAME = os.getenv('COMPANY_NAME', 'default_company_name')
+    STAFF_EMAIL = os.getenv('COMPANY_EMAIL', 'default_company_email')
+    SUPPORT_EMAIL = os.getenv('SUPPORT_EMAIL', 'default_support_email')
+    
     ENDPOINT_URL = os.getenv('ENDPOINT_URL', 'default_endpoint_url')
+    
+    UPDATE_PAYMENT_TEMPLATE_ID = os.getenv('UPDATE_PAYMENT_TEMPLATE_ID', 'default_update_payment_template_id')
 
     # database
     DATABASE_URL = os.getenv('DATABASE_URL', 'default_database_url')
