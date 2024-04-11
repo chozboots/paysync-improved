@@ -37,7 +37,9 @@ def charge_customer(customer_id: str, amount: int, card_upcharge: int) -> bool:
             amount=amount,
             currency='usd',
             customer=customer_id,
-            payment_method=default_payment_method_id
+            payment_method=default_payment_method_id,
+            off_session=True,
+            confirm=True
         )
         return True
     except stripe.StripeError as e:
