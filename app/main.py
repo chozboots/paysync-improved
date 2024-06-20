@@ -56,7 +56,7 @@ def create_customer(name: dict, email: str, phone: str) -> str:
 
     try:
         customer = stripe.Customer.create(
-            name=f"{name.get('First')}, {name.get('Last')}",
+            name=f"{name.get('first')}, {name.get('last')}",
             email=email,
             phone=phone,
         )
@@ -82,9 +82,9 @@ def submit_application():
     if not email or not phone:
         return jsonify({'error': 'Both email and phone number are required.'}), 400
 
-    if not all(key in name for key in ['First', 'Last']):
-        return jsonify({'error': 'Name must include First and Last fields.'}), 400
-    if not all(key in address for key in ['State', 'City', 'Address1', 'Zip']):
+    if not all(key in name for key in ['first', 'last']):
+        return jsonify({'error': 'Name must include "first" and "last" fields.'}), 400
+    if not all(key in address for key in ['state', 'city', 'address1', 'zip']):
         return jsonify({'error': 'Address must include State, City, Address1, and Zip fields.'}), 400
     
     stripe_check = customer_exists_in_stripe(email)
